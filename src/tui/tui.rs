@@ -1,3 +1,6 @@
+use super::handler;
+use super::model::{Model, RunningState};
+use crate::tui::message::Message;
 use anyhow::Result;
 use ratatui::widgets::Paragraph;
 use ratatui::{
@@ -8,10 +11,9 @@ use ratatui::{
     },
     Frame, Terminal,
 };
-use std::{io::stdout, panic};
-
-use super::handler;
-use super::model::{Model, RunningState};
+use std::sync::{mpsc, Arc, Mutex};
+use std::time::Duration;
+use std::{io::stdout, panic, thread};
 
 fn init_terminal() -> Result<Terminal<impl Backend>> {
     enable_raw_mode()?;
@@ -35,24 +37,47 @@ fn install_panic_hook() {
     }));
 }
 
-fn view(model: &mut Model, frame: &mut Frame) {
-    frame.render_widget(Paragraph::new(model.result.clone()), frame.area());
+fn view(model: Arc<Mutex<Model>>, frame: &mut Frame) {
+    frame.render_widget(
+        Paragraph::new(model.lock().unwrap().result.clone()),
+        frame.area(),
+    );
 }
 
-pub async fn start() -> Result<()> {
+pub fn start() -> Result<()> {
     install_panic_hook();
-    let mut terminal = init_terminal()?;
-    let mut model = Model::default();
-
-    while model.running_state != RunningState::Done {
-        terminal.draw(|f| view(&mut model, f))?;
-
-        let mut current_msg = handler::handle_event(&model)?;
-
-        while current_msg.is_some() {
-            current_msg = handler::update(&mut model, current_msg.unwrap()).await?;
+    let terminal = Arc::new(Mutex::new(init_terminal()?));
+    let model = Arc::new(Mutex::new(Model::default()));
+    let (sender, receiver) = mpsc::channel::<Message>();
+    let model2 = model.clone();
+    let terminal2 = terminal.clone();
+    let h = tokio::spawn(async move {
+        while let Ok(msg) = receiver.recv() {
+            handler::update(model2.clone(), msg).await.unwrap();
+            // todo: redraw not more often than 60 times per sec
+            terminal2
+                .lock()
+                .unwrap()
+                .draw(|f| view(model2.clone(), f))
+                .unwrap();
         }
+    });
+
+    let ev_sender = sender.clone();
+    let eh = tokio::spawn(async move {
+        loop {
+            if let Some(msg) = handler::user_event().unwrap() {
+                ev_sender.send(msg).unwrap();
+            }
+        }
+    });
+
+    terminal.lock().unwrap().draw(|f| view(model.clone(), f))?;
+    while model.clone().lock().unwrap().running_state != RunningState::Done {
+        thread::sleep(Duration::from_millis(50));
     }
+    h.abort();
+    eh.abort();
 
     restore_terminal()?;
     Ok(())

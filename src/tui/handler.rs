@@ -4,10 +4,11 @@ use crate::core::{LocalSession, Session};
 use anyhow::Result;
 use crossterm::event;
 use crossterm::event::{Event, KeyCode};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-pub fn handle_event(_: &Model) -> anyhow::Result<Option<Message>> {
-    if event::poll(Duration::from_millis(250))? {
+pub fn user_event() -> Result<Option<Message>> {
+    if event::poll(Duration::from_millis(10))? {
         if let Event::Key(key) = event::read()? {
             if key.kind == event::KeyEventKind::Press {
                 return Ok(handle_key(key));
@@ -25,17 +26,17 @@ pub fn handle_key(key: event::KeyEvent) -> Option<Message> {
     }
 }
 
-pub async fn update(model: &mut Model, msg: Message) -> Result<Option<Message>> {
+pub async fn update(model: Arc<Mutex<Model>>, msg: Message) -> Result<()> {
     match msg {
         Message::RunTestQuery => {
             // Just a test. Real session should be persisted.
             let session = LocalSession::default();
             let result = session.sql("select now();").await?;
-            model.result = format!("{:?}", result.first().unwrap().columns());
+            model.lock().unwrap().result = format!("{:?}", result.first().unwrap().columns());
         }
         Message::Quit => {
-            model.running_state = RunningState::Done;
+            model.lock().unwrap().running_state = RunningState::Done;
         }
     }
-    Ok(None)
+    Ok(())
 }
