@@ -1,16 +1,12 @@
-use crate::tui::model::RunningState::Running;
-
 #[derive(Debug)]
-pub struct Model {
+pub struct AppDB {
     pub result: String,
-    pub running_state: RunningState,
 }
 
-impl Default for Model {
+impl Default for AppDB {
     fn default() -> Self {
         Self {
             result: "Press x to run query".to_string(),
-            running_state: Running,
         }
     }
 }

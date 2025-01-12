@@ -1,6 +1,6 @@
+pub mod app;
+pub mod app_db;
 pub mod handler;
 pub mod message;
-pub mod model;
-pub mod tui;
 
-pub use tui::*;
+pub use app::*;

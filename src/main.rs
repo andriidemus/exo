@@ -3,6 +3,6 @@ use exo::tui::start;
 
 #[tokio::main]
 pub async fn main() -> Result<()> {
-    start()?;
+    start().await?;
     Ok(())
 }
