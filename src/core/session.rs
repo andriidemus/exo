@@ -1,6 +1,6 @@
 use anyhow::Result;
+use datafusion::arrow::record_batch::RecordBatch;
 use datafusion::prelude::SessionContext;
-use serde_json::json;
 use std::future::Future;
 
 pub struct LocalDataFusionSession {
@@ -8,7 +8,7 @@ pub struct LocalDataFusionSession {
 }
 
 pub trait DataFusionSession {
-    fn sql(&self, expr: &str) -> impl Future<Output = Result<serde_json::Value>> + Send;
+    fn sql(&self, expr: &str) -> impl Future<Output = Result<Vec<RecordBatch>>> + Send;
 }
 
 impl Default for LocalDataFusionSession {
@@ -26,9 +26,8 @@ impl LocalDataFusionSession {
 }
 
 impl DataFusionSession for LocalDataFusionSession {
-    async fn sql(&self, expr: &str) -> Result<serde_json::Value> {
-        let _result = self.ctx.sql(expr).await?.collect();
-        // TODO: convert record batch to serde json
-        Ok(json!("test1"))
+    async fn sql(&self, expr: &str) -> Result<Vec<RecordBatch>> {
+        let batches = self.ctx.sql(expr).await?.collect().await?;
+        Ok(batches)
     }
 }

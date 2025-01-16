@@ -4,6 +4,7 @@ use crate::core::{DataFusionSession, LocalDataFusionSession};
 use crate::tui::handler::Handler;
 use crate::tui::message::{CellsMessage, Message};
 use anyhow::Result;
+use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::widgets::Paragraph;
 use ratatui::{
     backend::{Backend, CrosstermBackend},
@@ -40,10 +41,16 @@ fn install_panic_hook() {
 }
 
 fn view(app_db: &AppDB, frame: &mut Frame) {
+    let layout = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints(vec![Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(frame.area());
     if let Some(cell_id) = app_db.cells.get_current_cell_id() {
         if let Some(cell) = app_db.cells.get_cell(&cell_id) {
-            let test = format!("{:?} : {:?} : {:?}", &cell.state, &cell.code, &cell.result);
-            frame.render_widget(Paragraph::new(test), frame.area());
+            frame.render_widget(&app_db.cells.editor, layout[0]);
+
+            let result = format!("{:?}", &cell.result);
+            frame.render_widget(Paragraph::new(result), layout[1]);
         }
     }
 }
@@ -55,9 +62,10 @@ pub async fn start() -> Result<()> {
 
     // test code
     let mut cell1 = Cell::new();
+    let cell_id = cell1.id.clone();
     cell1.code = Some("select now();".to_string());
-    app_db.cells.switch_cell(cell1.id);
     app_db.cells.add(cell1);
+    app_db.cells.switch_cell(cell_id);
     // test code
 
     let (sender, receiver) = mpsc::channel::<Vec<Message>>();
@@ -66,7 +74,7 @@ pub async fn start() -> Result<()> {
     let (df_sender, df_receiver) = mpsc::channel::<(Uuid, String)>();
     let handler = Handler::new(sender.clone(), df_sender);
 
-    let _df_loop = tokio::spawn(async move {
+    let df_loop = tokio::spawn(async move {
         let df = LocalDataFusionSession::new();
 
         while let Ok((uuid, expr)) = df_receiver.recv() {
@@ -80,34 +88,28 @@ pub async fn start() -> Result<()> {
     let event_loop = tokio::spawn(async move {
         terminal.draw(|f| view(&app_db, f)).unwrap();
         while let Ok(msgs) = receiver.recv() {
-            match msgs[..] {
-                [Message::Quit] => {
-                    break;
-                }
-                _ => {
-                    for msg in msgs {
-                        handler.handle(&mut app_db, msg).unwrap();
-                    }
-                    terminal.draw(|f| view(&app_db, f)).unwrap();
-                }
+            for msg in msgs {
+                handler.handle(&mut app_db, msg).unwrap();
             }
+            if app_db.quit {
+                break;
+            }
+            terminal.draw(|f| view(&app_db, f)).unwrap();
         }
     });
 
     let ui_event_loop = tokio::spawn(async move {
         loop {
+            // TODO: fix immediate quitting
             if let Some(msg) = handler::user_event().unwrap() {
-                let quit = msg == Message::Quit;
                 sender_from_ue.send(vec![msg]).unwrap();
-                if quit {
-                    break;
-                }
             }
         }
     });
 
     event_loop.await?;
     ui_event_loop.await?;
+    df_loop.await?;
     restore_terminal()?;
 
     Ok(())

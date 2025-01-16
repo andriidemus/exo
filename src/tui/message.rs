@@ -1,8 +1,11 @@
+use crossterm::event::KeyEvent;
+use datafusion::arrow::array::RecordBatch;
 use uuid::Uuid;
 
 #[derive(PartialEq)]
 pub enum Message {
     Cells(CellsMessage),
+    KeyPressed(KeyEvent),
     Quit,
 }
 
@@ -10,5 +13,6 @@ pub enum Message {
 pub enum CellsMessage {
     ExecuteCurrent,
     ClearCurrent,
-    SetResult(Uuid, serde_json::Value),
+    SaveCurrent,
+    SetResult(Uuid, Vec<RecordBatch>),
 }

@@ -1,4 +1,4 @@
-use super::app_db::AppDB;
+use super::app_db::{AppDB, Mode};
 use super::message::{CellsMessage, Message};
 use anyhow::Result;
 use crossterm::event;
@@ -11,21 +11,11 @@ pub fn user_event() -> Result<Option<Message>> {
     if event::poll(Duration::from_millis(10))? {
         if let Event::Key(key) = event::read()? {
             if key.kind == event::KeyEventKind::Press {
-                return Ok(handle_key(key));
+                return Ok(Some(Message::KeyPressed(key)));
             }
         }
     }
     Ok(None)
-}
-
-pub fn handle_key(key: event::KeyEvent) -> Option<Message> {
-    match key.code {
-        KeyCode::Char('q') => Some(Message::Quit),
-        KeyCode::Char('e') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            Some(Message::Cells(CellsMessage::ExecuteCurrent))
-        }
-        _ => None,
-    }
 }
 
 pub struct Handler {
@@ -41,20 +31,49 @@ impl Handler {
         }
     }
 
-    pub fn handle(&self, model: &mut AppDB, msg: Message) -> Result<()> {
+    pub fn handle(&self, app_db: &mut AppDB, msg: Message) -> Result<()> {
         match msg {
-            Message::Quit => {}
+            Message::Quit => {
+                app_db.quit = true;
+            }
             Message::Cells(cells_msg) => match cells_msg {
                 CellsMessage::ExecuteCurrent => {
-                    if let Some(cell_id) = model.cells.get_current_cell_id() {
-                        if let Some(expr) = model.cells.get_code(&cell_id) {
+                    if let Some(cell_id) = app_db.cells.get_current_cell_id() {
+                        if let Some(expr) = app_db.cells.get_code(&cell_id) {
                             self.df_channel.send((cell_id, expr)).unwrap();
                         }
                     }
                 }
                 CellsMessage::ClearCurrent => {}
                 CellsMessage::SetResult(cell_id, result) => {
-                    model.cells.set_result(cell_id, result);
+                    app_db.cells.set_result(cell_id, result);
+                }
+                CellsMessage::SaveCurrent => {
+                    if let Some(current) = app_db.cells.get_current_cell_id() {
+                        app_db
+                            .cells
+                            .set_code(current, app_db.cells.editor.lines().join("\n").to_string())
+                    }
+                }
+            },
+            Message::KeyPressed(key) => match app_db.mode {
+                Mode::Navigate => match key.code {
+                    KeyCode::Char('q') => {
+                        app_db.quit = true;
+                    }
+                    KeyCode::Char('e') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        self.handle(app_db, Message::Cells(CellsMessage::ExecuteCurrent))?;
+                    }
+                    KeyCode::Enter => app_db.mode = Mode::EditCell,
+                    _ => {}
+                },
+                Mode::EditCell => {
+                    if key.code == KeyCode::Esc {
+                        app_db.mode = Mode::Navigate;
+                        self.handle(app_db, Message::Cells(CellsMessage::SaveCurrent))?;
+                    } else {
+                        app_db.cells.editor.input(key);
+                    }
                 }
             },
         }
