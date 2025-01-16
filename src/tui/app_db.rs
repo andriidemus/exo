@@ -8,6 +8,7 @@ pub struct AppDB<'a> {
     pub cells: Cells<'a>,
     pub mode: Mode,
     pub quit: bool,
+    pub show_help: bool,
 }
 
 #[derive(Debug, Default)]
@@ -64,10 +65,10 @@ impl Cells<'_> {
         });
     }
 
-    pub fn set_failure(&mut self, cell_id: Uuid, result: Vec<RecordBatch>) {
+    pub fn set_error(&mut self, cell_id: Uuid, error: String) {
         self.cells.entry(cell_id).and_modify(|e| {
-            e.result = Some(result);
-            e.state = CellState::Finished
+            e.error = Some(error);
+            e.state = CellState::Failed
         });
     }
 

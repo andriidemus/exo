@@ -1,4 +1,4 @@
-use super::app_db::{AppDB, Cell};
+use super::app_db::{AppDB, CellState};
 use super::handler;
 use crate::core::{DataFusionSession, LocalDataFusionSession};
 use crate::tui::handler::Handler;
@@ -41,17 +41,48 @@ fn install_panic_hook() {
 }
 
 fn view(app_db: &AppDB, frame: &mut Frame) {
-    let layout = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints(vec![Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(frame.area());
+    let mut show_help = app_db.show_help;
+
     if let Some(cell_id) = app_db.cells.get_current_cell_id() {
+        let layout = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(vec![Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(frame.area());
+
         if let Some(cell) = app_db.cells.get_cell(&cell_id) {
             frame.render_widget(&app_db.cells.editor, layout[0]);
 
-            let result = format!("{:?}", &cell.result);
-            frame.render_widget(Paragraph::new(result), layout[1]);
+            match cell.state {
+                CellState::Clean => {
+                    frame.render_widget(
+                        Paragraph::new("Press <ctrl+e> to execute current cell"),
+                        layout[1],
+                    );
+                }
+                CellState::Running => {
+                    frame.render_widget(Paragraph::new("Running..."), layout[1]);
+                }
+                CellState::Finished => {
+                    let result = format!("{:?}", &cell.result);
+                    frame.render_widget(Paragraph::new(result), layout[1]);
+                }
+                CellState::Failed => {
+                    frame.render_widget(
+                        Paragraph::new(cell.error.clone().unwrap_or(String::new())),
+                        layout[1],
+                    );
+                }
+                CellState::Aborted => {
+                    frame.render_widget(Paragraph::new("Aborted"), layout[1]);
+                }
+            }
         }
+    } else {
+        show_help = true;
+    }
+
+    if show_help {
+        frame.render_widget(Paragraph::new("Press 'n' to create a cell"), frame.area());
     }
 }
 
@@ -59,14 +90,6 @@ pub async fn start() -> Result<()> {
     install_panic_hook();
     let mut terminal = init_terminal()?;
     let mut app_db = AppDB::default();
-
-    // test code
-    let mut cell1 = Cell::new();
-    let cell_id = cell1.id.clone();
-    cell1.code = Some("select now();".to_string());
-    app_db.cells.add(cell1);
-    app_db.cells.switch_cell(cell_id);
-    // test code
 
     let (sender, receiver) = mpsc::channel::<Vec<Message>>();
     let sender_from_ue = sender.clone();
@@ -78,10 +101,15 @@ pub async fn start() -> Result<()> {
         let df = LocalDataFusionSession::new();
 
         while let Ok((uuid, expr)) = df_receiver.recv() {
-            let result = df.sql(&expr).await.unwrap();
-            sender
-                .send(vec![Message::Cells(CellsMessage::SetResult(uuid, result))])
-                .unwrap();
+            let messages = match df.sql(&expr).await {
+                Ok(result) => vec![Message::Cells(CellsMessage::SetResult(uuid, result))],
+                Err(err) => vec![Message::Cells(CellsMessage::SetError(
+                    uuid,
+                    err.to_string(),
+                ))],
+            };
+
+            sender.send(messages).unwrap();
         }
     });
 
@@ -102,7 +130,9 @@ pub async fn start() -> Result<()> {
         loop {
             // TODO: fix immediate quitting
             if let Some(msg) = handler::user_event().unwrap() {
-                sender_from_ue.send(vec![msg]).unwrap();
+                if let Err(_) = sender_from_ue.send(vec![msg]) {
+                    break;
+                }
             }
         }
     });
