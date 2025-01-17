@@ -5,7 +5,8 @@ use crate::tui::handler::Handler;
 use crate::tui::message::{CellsMessage, Message};
 use anyhow::Result;
 use ratatui::layout::{Constraint, Direction, Layout};
-use ratatui::widgets::Paragraph;
+use ratatui::style::Color;
+use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use ratatui::{
     backend::{Backend, CrosstermBackend},
     crossterm::{
@@ -54,26 +55,41 @@ fn view(app_db: &AppDB, frame: &mut Frame) {
 
             match cell.state {
                 CellState::Clean => {
+                    let block = Block::default()
+                        .borders(Borders::ALL)
+                        .title("No result")
+                        .border_style(Color::Black);
                     frame.render_widget(
-                        Paragraph::new("Press <ctrl+e> to execute current cell"),
+                        Paragraph::new("Press <ctrl+e> to execute current cell").block(block),
                         layout[1],
                     );
                 }
                 CellState::Running => {
-                    frame.render_widget(Paragraph::new("Running..."), layout[1]);
+                    let block = Block::default()
+                        .borders(Borders::ALL)
+                        .title("Running...")
+                        .border_style(Color::Black);
+                    frame.render_widget(Paragraph::new("").block(block), layout[1]);
                 }
                 CellState::Finished => {
+                    let block = Block::default()
+                        .borders(Borders::ALL)
+                        .title("Finished")
+                        .border_style(Color::Black);
                     let result = format!("{:?}", &cell.result);
-                    frame.render_widget(Paragraph::new(result), layout[1]);
+                    frame.render_widget(Paragraph::new(result).block(block), layout[1]);
                 }
                 CellState::Failed => {
+                    let block = Block::default()
+                        .borders(Borders::ALL)
+                        .title("Failed")
+                        .border_style(Color::Black);
                     frame.render_widget(
-                        Paragraph::new(cell.error.clone().unwrap_or(String::new())),
+                        Paragraph::new(cell.error.clone().unwrap_or(String::new()))
+                            .block(block)
+                            .wrap(Wrap::default()),
                         layout[1],
                     );
-                }
-                CellState::Aborted => {
-                    frame.render_widget(Paragraph::new("Aborted"), layout[1]);
                 }
             }
         }
@@ -82,7 +98,11 @@ fn view(app_db: &AppDB, frame: &mut Frame) {
     }
 
     if show_help {
-        frame.render_widget(Paragraph::new("Press 'n' to create a cell"), frame.area());
+        let block = Block::default().borders(Borders::ALL);
+        frame.render_widget(
+            Paragraph::new("Press 'n' to create a cell").block(block),
+            frame.area(),
+        );
     }
 }
 

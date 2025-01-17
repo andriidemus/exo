@@ -1,6 +1,6 @@
 use anyhow::Result;
 use datafusion::arrow::record_batch::RecordBatch;
-use datafusion::prelude::SessionContext;
+use datafusion::prelude::{SessionConfig, SessionContext};
 use std::future::Future;
 
 pub struct LocalDataFusionSession {
@@ -19,9 +19,9 @@ impl Default for LocalDataFusionSession {
 
 impl LocalDataFusionSession {
     pub fn new() -> Self {
-        Self {
-            ctx: SessionContext::new(),
-        }
+        let conf = SessionConfig::new().with_information_schema(true);
+        let ctx = SessionContext::new_with_config(conf);
+        Self { ctx }
     }
 }
 

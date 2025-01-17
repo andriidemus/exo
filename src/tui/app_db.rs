@@ -76,12 +76,6 @@ impl Cells<'_> {
         });
     }
 
-    pub fn switch_cell(&mut self, cell_id: Uuid) {
-        self.current_cell_id = Some(cell_id);
-        let code = self.get_code(&cell_id);
-        self.editor = TextArea::from(code.unwrap_or(String::new()).lines());
-    }
-
     pub fn get_current_cell_id(&self) -> Option<Uuid> {
         self.current_cell_id
     }
@@ -110,7 +104,6 @@ pub enum CellState {
     Running,
     Finished,
     Failed,
-    Aborted,
 }
 
 impl Default for Cell {

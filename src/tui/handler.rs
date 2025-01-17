@@ -4,8 +4,10 @@ use anyhow::Result;
 use crossterm::event;
 use crossterm::event::{Event, KeyCode, KeyModifiers};
 use ratatui::style::{Color, Style};
+use ratatui::widgets::{Block, Borders};
 use std::sync::mpsc::Sender;
 use std::time::Duration;
+use tui_textarea::TextArea;
 use uuid::Uuid;
 
 pub fn user_event() -> Result<Option<Message>> {
@@ -32,18 +34,34 @@ impl Handler {
         let cell = Cell::new();
         let cell_id = cell.id;
         app_db.cells.add(cell);
-        app_db.cells.switch_cell(cell_id);
 
         let index = app_db.cells.current_cell_index.map(|i| i + 1).unwrap_or(0);
         app_db.cells.current_cell_index = Some(index);
         app_db.cells.order.insert(index, cell_id);
 
+        self.switch_cell(app_db, cell_id);
         app_db
             .cells
             .editor
             .set_cursor_style(Style::from((Color::White, Color::Gray)));
 
         Ok(())
+    }
+
+    pub fn switch_cell(&self, app_db: &mut AppDB, cell_id: Uuid) {
+        app_db.cells.current_cell_id = Some(cell_id);
+        let code = app_db.cells.get_code(&cell_id);
+        app_db.cells.editor = TextArea::from(code.unwrap_or_default().lines());
+        let editor_title = format!(
+            "Cell {} of {}",
+            app_db.cells.current_cell_index.unwrap() + 1,
+            app_db.cells.cells.len()
+        );
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .title(editor_title)
+            .border_style(Color::Black);
+        app_db.cells.editor.set_block(block);
     }
 
     pub fn handle(&self, app_db: &mut AppDB, msg: Message) -> Result<()> {
@@ -56,7 +74,7 @@ impl Handler {
                 CellsMessage::ExecuteCurrent => {
                     if let Some(cell_id) = app_db.cells.get_current_cell_id() {
                         if let Some(expr) = app_db.cells.get_code(&cell_id) {
-                            self.df_channel.send((cell_id, expr)).unwrap();
+                            self.df_channel.send((cell_id, expr))?;
                         }
                     }
                 }
@@ -97,7 +115,7 @@ impl Handler {
                         app_db.cells.cells.remove(&id);
 
                         if let Some(id) = new_current_index.map(|i| app_db.cells.order[i]) {
-                            app_db.cells.switch_cell(id);
+                            self.switch_cell(app_db, id);
                         } else {
                             app_db.cells.current_cell_id = None;
                         }
@@ -133,7 +151,7 @@ impl Handler {
                             if index > 0 {
                                 let new_index = index - 1;
                                 app_db.cells.current_cell_index = Some(new_index);
-                                app_db.cells.switch_cell(app_db.cells.order[new_index])
+                                self.switch_cell(app_db, app_db.cells.order[new_index])
                             }
                         }
                     }
@@ -142,7 +160,7 @@ impl Handler {
                             if index + 1 < app_db.cells.order.len() {
                                 let new_index = index + 1;
                                 app_db.cells.current_cell_index = Some(new_index);
-                                app_db.cells.switch_cell(app_db.cells.order[new_index])
+                                self.switch_cell(app_db, app_db.cells.order[new_index])
                             }
                         }
                     }
