@@ -14,7 +14,7 @@ use ratatui::{
     },
     Frame, Terminal,
 };
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc, Mutex};
 use std::{io::stdout, panic};
 use uuid::Uuid;
 
@@ -95,7 +95,7 @@ pub async fn start() -> Result<()> {
     let sender_from_ue = sender.clone();
 
     let (df_sender, df_receiver) = mpsc::channel::<(Uuid, String)>();
-    let handler = Handler::new(sender.clone(), df_sender);
+    let handler = Handler::new(df_sender);
 
     let df_loop = tokio::spawn(async move {
         let df = LocalDataFusionSession::new();
@@ -120,27 +120,31 @@ pub async fn start() -> Result<()> {
                 handler.handle(&mut app_db, msg).unwrap();
             }
             if app_db.quit {
-                break;
+                return;
             }
             terminal.draw(|f| view(&app_db, f)).unwrap();
         }
     });
 
+    let exit_flag = Arc::new(Mutex::new(false));
+    let exit_flag_clone = exit_flag.clone();
     let ui_event_loop = tokio::spawn(async move {
         loop {
-            // TODO: fix immediate quitting
             if let Some(msg) = handler::user_event().unwrap() {
-                if let Err(_) = sender_from_ue.send(vec![msg]) {
+                if sender_from_ue.send(vec![msg]).is_err() {
                     break;
                 }
+            } else if *exit_flag_clone.lock().unwrap() {
+                break;
             }
         }
     });
 
     event_loop.await?;
-    ui_event_loop.await?;
-    df_loop.await?;
+    *exit_flag.lock().unwrap() = true;
     restore_terminal()?;
+    df_loop.await?;
+    ui_event_loop.await?;
 
     Ok(())
 }

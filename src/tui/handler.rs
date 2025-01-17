@@ -20,16 +20,12 @@ pub fn user_event() -> Result<Option<Message>> {
 }
 
 pub struct Handler {
-    event_channel: Sender<Vec<Message>>,
     df_channel: Sender<(Uuid, String)>,
 }
 
 impl Handler {
-    pub fn new(event_channel: Sender<Vec<Message>>, df_channel: Sender<(Uuid, String)>) -> Self {
-        Self {
-            event_channel,
-            df_channel,
-        }
+    pub fn new(df_channel: Sender<(Uuid, String)>) -> Self {
+        Self { df_channel }
     }
 
     fn create_cell(&self, app_db: &mut AppDB) -> Result<()> {
