@@ -1235,7 +1235,6 @@ dependencies = [
  "crossterm",
  "datafusion",
  "ratatui",
- "serde_json",
  "tokio",
  "tui-textarea",
  "uuid",

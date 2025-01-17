@@ -33,13 +33,20 @@ impl Handler {
     }
 
     fn create_cell(&self, app_db: &mut AppDB) -> Result<()> {
-        if let Some(current_id) = app_db.cells.get_current_cell_id() {
-        } else {
-            let cell = Cell::new();
-            let cell_id = cell.id;
-            app_db.cells.add(cell);
-            app_db.cells.switch_cell(cell_id);
-        }
+        let cell = Cell::new();
+        let cell_id = cell.id;
+        app_db.cells.add(cell);
+        app_db.cells.switch_cell(cell_id);
+
+        let index = app_db.cells.current_cell_index.map(|i| i + 1).unwrap_or(0);
+        app_db.cells.current_cell_index = Some(index);
+        app_db.cells.order.insert(index, cell_id);
+
+        app_db
+            .cells
+            .editor
+            .set_cursor_style(Style::from((Color::White, Color::Gray)));
+
         Ok(())
     }
 
@@ -73,6 +80,32 @@ impl Handler {
                 }
                 CellsMessage::Create => {
                     self.create_cell(app_db)?;
+                    app_db
+                        .cells
+                        .editor
+                        .set_cursor_style(Style::from((Color::White, Color::Black)));
+                    app_db.mode = Mode::EditCell;
+                }
+                CellsMessage::DeleteCurrent => {
+                    if let Some(index) = app_db.cells.current_cell_index {
+                        let new_current_index = {
+                            if index + 1 < app_db.cells.order.len() {
+                                Some(index)
+                            } else if index > 0 {
+                                Some(index - 1)
+                            } else {
+                                None
+                            }
+                        };
+                        let id = app_db.cells.order.remove(index);
+                        app_db.cells.cells.remove(&id);
+
+                        if let Some(id) = new_current_index.map(|i| app_db.cells.order[i]) {
+                            app_db.cells.switch_cell(id);
+                        } else {
+                            app_db.cells.current_cell_id = None;
+                        }
+                    }
                 }
             },
             Message::KeyPressed(key) => match app_db.mode {
@@ -89,12 +122,33 @@ impl Handler {
                     KeyCode::Char('n') => {
                         self.handle(app_db, Message::Cells(CellsMessage::Create))?;
                     }
+                    KeyCode::Char('d') => {
+                        self.handle(app_db, Message::Cells(CellsMessage::DeleteCurrent))?;
+                    }
                     KeyCode::Enter | KeyCode::Left => {
                         app_db
                             .cells
                             .editor
                             .set_cursor_style(Style::from((Color::White, Color::Black)));
                         app_db.mode = Mode::EditCell;
+                    }
+                    KeyCode::Up => {
+                        if let Some(index) = app_db.cells.current_cell_index {
+                            if index > 0 {
+                                let new_index = index - 1;
+                                app_db.cells.current_cell_index = Some(new_index);
+                                app_db.cells.switch_cell(app_db.cells.order[new_index])
+                            }
+                        }
+                    }
+                    KeyCode::Down => {
+                        if let Some(index) = app_db.cells.current_cell_index {
+                            if index + 1 < app_db.cells.order.len() {
+                                let new_index = index + 1;
+                                app_db.cells.current_cell_index = Some(new_index);
+                                app_db.cells.switch_cell(app_db.cells.order[new_index])
+                            }
+                        }
                     }
                     _ => {}
                 },

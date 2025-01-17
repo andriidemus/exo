@@ -11,7 +11,7 @@ pub struct AppDB<'a> {
     pub show_help: bool,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Eq, PartialEq)]
 pub enum Mode {
     #[default]
     Navigate,
@@ -21,8 +21,10 @@ pub enum Mode {
 #[derive(Debug)]
 pub struct Cells<'a> {
     pub editor: TextArea<'a>,
-    cells: HashMap<Uuid, Cell>,
-    current_cell_id: Option<Uuid>,
+    pub cells: HashMap<Uuid, Cell>,
+    pub order: Vec<Uuid>,
+    pub current_cell_index: Option<usize>,
+    pub current_cell_id: Option<Uuid>,
 }
 
 impl Default for Cells<'_> {
@@ -36,7 +38,9 @@ impl Cells<'_> {
         Self {
             editor: Default::default(),
             cells: HashMap::new(),
+            order: Vec::new(),
             current_cell_id: Default::default(),
+            current_cell_index: Default::default(),
         }
     }
 
