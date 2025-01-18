@@ -98,7 +98,7 @@ pub struct Cell {
     pub state: CellState,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum CellState {
     Clean,
     Running,

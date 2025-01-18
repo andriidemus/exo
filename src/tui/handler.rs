@@ -52,15 +52,9 @@ impl Handler {
         app_db.cells.current_cell_id = Some(cell_id);
         let code = app_db.cells.get_code(&cell_id);
         app_db.cells.editor = TextArea::from(code.unwrap_or_default().lines());
-        let editor_title = format!(
-            "Cell {} of {}",
-            app_db.cells.current_cell_index.unwrap() + 1,
-            app_db.cells.cells.len()
-        );
         let block = Block::default()
-            .borders(Borders::ALL)
-            .title(editor_title)
-            .border_style(Color::Black);
+            .borders(Borders::RIGHT)
+            .border_style(Color::Gray);
         app_db.cells.editor.set_block(block);
     }
 

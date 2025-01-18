@@ -1,11 +1,11 @@
-use super::app_db::{AppDB, CellState};
+use super::app_db::{AppDB, CellState, Mode};
 use super::handler;
 use crate::core::{DataFusionSession, LocalDataFusionSession};
 use crate::tui::handler::Handler;
 use crate::tui::message::{CellsMessage, Message};
 use anyhow::Result;
-use ratatui::layout::{Constraint, Direction, Layout};
-use ratatui::style::Color;
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::style::{Color, Style};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use ratatui::{
     backend::{Backend, CrosstermBackend},
@@ -41,54 +41,76 @@ fn install_panic_hook() {
     }));
 }
 
+fn render_status_line(app_db: &AppDB, frame: &mut Frame, rect: Rect) {
+    let style = Style::new().bg(Color::Gray);
+    let mode_str = match app_db.mode {
+        Mode::Navigate => "NAVI",
+        Mode::EditCell => "EDIT",
+    };
+    let cell_no = app_db
+        .cells
+        .current_cell_index
+        .map(|i| format!("{}/{}", i + 1, app_db.cells.cells.len()))
+        .unwrap_or_default();
+
+    let cell_state = app_db
+        .cells
+        .current_cell_id
+        .map(|id| match app_db.cells.get_cell(&id).unwrap().state {
+            CellState::Clean => "Not Executed",
+            CellState::Running => "Running",
+            CellState::Finished => "Finished",
+            CellState::Failed => "Failed",
+        })
+        .unwrap_or_default();
+
+    let status = format!(" {} • {} • {}", mode_str, cell_no, cell_state);
+
+    frame.render_widget(
+        Paragraph::new(status).style(style).wrap(Wrap::default()),
+        rect,
+    )
+}
+
 fn view(app_db: &AppDB, frame: &mut Frame) {
     let mut show_help = app_db.show_help;
 
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(vec![Constraint::Min(1), Constraint::Length(1)])
+        .split(frame.area());
+
+    render_status_line(app_db, frame, layout[1]);
+
     if let Some(cell_id) = app_db.cells.get_current_cell_id() {
-        let layout = Layout::default()
+        let cell_layout = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(vec![Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(frame.area());
+            .split(layout[0]);
 
         if let Some(cell) = app_db.cells.get_cell(&cell_id) {
-            frame.render_widget(&app_db.cells.editor, layout[0]);
+            frame.render_widget(&app_db.cells.editor, cell_layout[0]);
 
             match cell.state {
                 CellState::Clean => {
-                    let block = Block::default()
-                        .borders(Borders::ALL)
-                        .title("No result")
-                        .border_style(Color::Black);
                     frame.render_widget(
-                        Paragraph::new("Press <ctrl+e> to execute current cell").block(block),
-                        layout[1],
+                        Paragraph::new("Press <ctrl+e> to execute current cell"),
+                        cell_layout[1],
                     );
                 }
                 CellState::Running => {
-                    let block = Block::default()
-                        .borders(Borders::ALL)
-                        .title("Running...")
-                        .border_style(Color::Black);
-                    frame.render_widget(Paragraph::new("").block(block), layout[1]);
+                    frame.render_widget(Paragraph::new(""), cell_layout[1]);
                 }
                 CellState::Finished => {
-                    let block = Block::default()
-                        .borders(Borders::ALL)
-                        .title("Finished")
-                        .border_style(Color::Black);
                     let result = format!("{:?}", &cell.result);
-                    frame.render_widget(Paragraph::new(result).block(block), layout[1]);
+                    frame.render_widget(Paragraph::new(result), cell_layout[1]);
                 }
                 CellState::Failed => {
-                    let block = Block::default()
-                        .borders(Borders::ALL)
-                        .title("Failed")
-                        .border_style(Color::Black);
                     frame.render_widget(
                         Paragraph::new(cell.error.clone().unwrap_or(String::new()))
-                            .block(block)
+                            .style(Style::new().fg(Color::Red))
                             .wrap(Wrap::default()),
-                        layout[1],
+                        cell_layout[1],
                     );
                 }
             }
