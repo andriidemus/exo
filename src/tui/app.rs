@@ -4,9 +4,12 @@ use crate::core::{DataFusionSession, LocalDataFusionSession};
 use crate::tui::handler::Handler;
 use crate::tui::message::{CellsMessage, Message};
 use anyhow::Result;
+use datafusion::arrow::array::Array;
+use datafusion::arrow::error::ArrowError;
+use datafusion::arrow::util::display::{ArrayFormatter, FormatOptions};
 use indoc::indoc;
 use ratatui::layout::{Alignment, Constraint, Direction, Flex, Layout, Rect};
-use ratatui::style::{Color, Style};
+use ratatui::style::{Color, Modifier, Style, Styled};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Padding, Paragraph, Wrap};
 use ratatui::{
     backend::{Backend, CrosstermBackend},
@@ -14,7 +17,7 @@ use ratatui::{
         terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
         ExecutableCommand,
     },
-    Frame, Terminal,
+    widgets, Frame, Terminal,
 };
 use std::sync::{mpsc, Arc, Mutex};
 use std::{io::stdout, panic};
@@ -45,8 +48,8 @@ fn install_panic_hook() {
 fn render_status_line(app_db: &AppDB, frame: &mut Frame, rect: Rect) {
     let style = Style::new().bg(Color::Gray);
     let mode_str = match app_db.mode {
-        Mode::Navigate => "NAVI",
-        Mode::EditCell => "EDIT",
+        Mode::Navigate => "🚀 NAVI",
+        Mode::EditCell => "✏️ EDIT",
     };
     let cell_no = app_db
         .cells
@@ -72,7 +75,8 @@ fn render_status_line(app_db: &AppDB, frame: &mut Frame, rect: Rect) {
         parts.push(val.to_string());
     }
 
-    let status = parts.join(" • ");
+    let mut status = parts.join(" • ");
+    status.insert(0, ' ');
 
     frame.render_widget(
         Paragraph::new(status).style(style).wrap(Wrap::default()),
@@ -176,6 +180,68 @@ fn render_help(frame: &mut Frame) {
     frame.render_widget(Paragraph::new(help).block(block), area);
 }
 
+fn render_table(app_db: &AppDB, frame: &mut Frame, area: Rect) {
+    if let Some(ref result) = app_db
+        .cells
+        .get_current_cell_id()
+        .and_then(|id| app_db.cells.get_cell(&id))
+        .and_then(|cell| cell.result.as_ref())
+    {
+        frame.render_widget(Clear, area);
+
+        if result.is_empty() {
+            frame.render_widget(
+                Paragraph::new("SQL statement did not return any data"),
+                area,
+            );
+            return;
+        }
+
+        let batch = result.first().unwrap();
+
+        let header = batch
+            .schema()
+            .fields
+            .iter()
+            .map(|f| f.name().clone())
+            .map(widgets::Cell::from)
+            .collect::<widgets::Row>()
+            .height(1)
+            .style(Style::from((Color::Black, Color::Gray)).add_modifier(Modifier::BOLD));
+
+        let mut rows: Vec<widgets::Row> = vec![];
+
+        for batch in result.iter() {
+            let formatters = batch
+                .columns()
+                .iter()
+                .map(|c| ArrayFormatter::try_new(c.as_ref(), &FormatOptions::default()))
+                .collect::<Result<Vec<_>, ArrowError>>()
+                .unwrap();
+
+            for i in 0..batch.num_rows() {
+                let mut cells = Vec::new();
+                for formatter in &formatters {
+                    cells.push(formatter.value(i).to_string());
+                }
+                let bg = if i % 2 == 0 {
+                    Color::White
+                } else {
+                    Color::Gray
+                };
+                let table_row = widgets::Row::new(cells).style(Style::new().bg(bg));
+                rows.push(table_row);
+            }
+        }
+
+        let table = widgets::Table::default()
+            .header(header)
+            .rows(rows)
+            .row_highlight_style(Style::from(Color::Red));
+        frame.render_widget(table, area);
+    }
+}
+
 fn view(app_db: &AppDB, frame: &mut Frame) {
     let mut show_help = app_db.show_help;
 
@@ -212,8 +278,7 @@ fn view(app_db: &AppDB, frame: &mut Frame) {
                     frame.render_widget(Paragraph::new(""), cell_layout[1]);
                 }
                 CellState::Finished => {
-                    let result = format!("{:?}", &cell.result);
-                    frame.render_widget(Paragraph::new(result), cell_layout[1]);
+                    render_table(app_db, frame, cell_layout[1]);
                 }
                 CellState::Failed => {
                     frame.render_widget(
