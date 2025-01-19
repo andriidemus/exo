@@ -4,6 +4,7 @@ use crate::core::{DataFusionSession, LocalDataFusionSession};
 use crate::tui::handler::Handler;
 use crate::tui::message::{CellsMessage, Message};
 use anyhow::Result;
+use indoc::indoc;
 use ratatui::layout::{Alignment, Constraint, Direction, Flex, Layout, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Padding, Paragraph, Wrap};
@@ -50,21 +51,28 @@ fn render_status_line(app_db: &AppDB, frame: &mut Frame, rect: Rect) {
     let cell_no = app_db
         .cells
         .current_cell_index
-        .map(|i| format!("{}/{}", i + 1, app_db.cells.cells.len()))
-        .unwrap_or_default();
+        .map(|i| format!("{}/{}", i + 1, app_db.cells.cells.len()));
 
-    let cell_state = app_db
-        .cells
-        .current_cell_id
-        .map(|id| match app_db.cells.get_cell(&id).unwrap().state {
-            CellState::Clean => "Not Executed",
-            CellState::Running => "Running",
-            CellState::Finished => "Finished",
-            CellState::Failed => "Failed",
-        })
-        .unwrap_or_default();
+    let cell_state =
+        app_db
+            .cells
+            .current_cell_id
+            .map(|id| match app_db.cells.get_cell(&id).unwrap().state {
+                CellState::Clean => "Not Executed",
+                CellState::Running => "Running",
+                CellState::Finished => "Finished",
+                CellState::Failed => "Failed",
+            });
 
-    let status = format!(" {} • {} • {}", mode_str, cell_no, cell_state);
+    let mut parts = vec![mode_str.to_string()];
+    if let Some(val) = cell_no {
+        parts.push(val);
+    }
+    if let Some(val) = cell_state {
+        parts.push(val.to_string());
+    }
+
+    let status = parts.join(" • ");
 
     frame.render_widget(
         Paragraph::new(status).style(style).wrap(Wrap::default()),
@@ -72,11 +80,13 @@ fn render_status_line(app_db: &AppDB, frame: &mut Frame, rect: Rect) {
     )
 }
 
-fn center(area: Rect, horizontal: Constraint, vertical: Constraint) -> Rect {
-    let [area] = Layout::horizontal([horizontal])
+fn centered_area(area: Rect, width: u16, height: u16) -> Rect {
+    let [area] = Layout::horizontal([Constraint::Length(width)])
         .flex(Flex::Center)
         .areas(area);
-    let [area] = Layout::vertical([vertical]).flex(Flex::Center).areas(area);
+    let [area] = Layout::vertical([Constraint::Length(height)])
+        .flex(Flex::Center)
+        .areas(area);
     area
 }
 
@@ -91,11 +101,7 @@ fn render_popup(app_db: &AppDB, frame: &mut Frame) {
             .padding(Padding::new(pad, pad, pad, pad));
 
         let text = popup.body.clone();
-        let area = center(
-            frame.area(),
-            Constraint::Length(text.len() as u16 + 10),
-            Constraint::Length(7),
-        );
+        let area = centered_area(frame.area(), text.len() as u16 + 10, 7);
 
         let layout = Layout::default()
             .direction(Direction::Vertical)
@@ -141,6 +147,35 @@ fn render_popup(app_db: &AppDB, frame: &mut Frame) {
     }
 }
 
+fn render_help(frame: &mut Frame) {
+    let help = indoc! {"
+            n        - create new cell
+            d        - delete selected cell
+            ↑, k     - select previous cell
+            ↓, j     - select next cell
+            ←, h, ↵  - edit selected cell
+            e        - execute selected cell
+            q        - quit
+            ?, F1    - show this help
+            "};
+
+    let height = help.lines().count() + 2;
+    let width = help
+        .lines()
+        .map(|l| l.len())
+        .max()
+        .map(|l| l + 4)
+        .unwrap_or_default();
+    let area = centered_area(frame.area(), width as u16, height as u16);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .padding(Padding::new(1u16, 1u16, 0, 0));
+    frame.render_widget(Clear, area);
+    frame.render_widget(Paragraph::new(help).block(block), area);
+}
+
 fn view(app_db: &AppDB, frame: &mut Frame) {
     let mut show_help = app_db.show_help;
 
@@ -162,10 +197,16 @@ fn view(app_db: &AppDB, frame: &mut Frame) {
 
             match cell.state {
                 CellState::Clean => {
-                    frame.render_widget(
-                        Paragraph::new("Press <ctrl+e> to execute current cell"),
-                        cell_layout[1],
-                    );
+                    let text = indoc! {"
+                        You can write and execute SQL in the DataFusion dialect.
+                        
+                        Official reference: https://datafusion.apache.org/user-guide/sql/index.html
+
+                        To execute cell, press <Alt/Option + Enter>
+                        You also may press <Esc> to back to the Navigation mode, and then press <e>
+                    "};
+
+                    frame.render_widget(Paragraph::new(text), cell_layout[1]);
                 }
                 CellState::Running => {
                     frame.render_widget(Paragraph::new(""), cell_layout[1]);
@@ -189,13 +230,7 @@ fn view(app_db: &AppDB, frame: &mut Frame) {
     }
 
     if show_help {
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_type(BorderType::Rounded);
-        frame.render_widget(
-            Paragraph::new("Press 'n' to create a cell").block(block),
-            frame.area(),
-        );
+        render_help(frame);
     }
 
     if app_db.popup.is_some() {

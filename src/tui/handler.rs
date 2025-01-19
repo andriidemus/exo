@@ -180,14 +180,14 @@ impl Handler {
                                     active_button: ConfirmDialogButton::Yes,
                                 });
                             }
-                            KeyCode::Enter | KeyCode::Left => {
+                            KeyCode::Enter | KeyCode::Left | KeyCode::Char('h') => {
                                 app_db
                                     .cells
                                     .editor
                                     .set_cursor_style(Style::from((Color::White, Color::Black)));
                                 app_db.mode = Mode::EditCell;
                             }
-                            KeyCode::Up => {
+                            KeyCode::Up | KeyCode::Char('k') => {
                                 if let Some(index) = app_db.cells.current_cell_index {
                                     if index > 0 {
                                         let new_index = index - 1;
@@ -196,7 +196,7 @@ impl Handler {
                                     }
                                 }
                             }
-                            KeyCode::Down => {
+                            KeyCode::Down | KeyCode::Char('j') => {
                                 if let Some(index) = app_db.cells.current_cell_index {
                                     if index + 1 < app_db.cells.order.len() {
                                         let new_index = index + 1;
@@ -208,9 +208,10 @@ impl Handler {
                             _ => {}
                         },
                         Mode::EditCell => {
-                            if key.code == KeyCode::Char('e')
-                                && key.modifiers.contains(KeyModifiers::CONTROL)
+                            if key.code == KeyCode::Enter
+                                && key.modifiers.contains(KeyModifiers::ALT)
                             {
+                                self.handle(app_db, Message::Cells(CellsMessage::SaveCurrent))?;
                                 self.handle(app_db, Message::Cells(CellsMessage::ExecuteCurrent))?;
                             } else if key.code == KeyCode::Esc {
                                 app_db

@@ -1234,6 +1234,7 @@ dependencies = [
  "anyhow",
  "crossterm",
  "datafusion",
+ "indoc",
  "ratatui",
  "tokio",
  "tui-textarea",
