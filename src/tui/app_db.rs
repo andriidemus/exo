@@ -1,3 +1,4 @@
+use crate::tui::message::Message;
 use datafusion::arrow::array::RecordBatch;
 use std::collections::HashMap;
 use tui_textarea::TextArea;
@@ -9,13 +10,27 @@ pub struct AppDB<'a> {
     pub mode: Mode,
     pub quit: bool,
     pub show_help: bool,
+    pub popup: Option<ConfirmDialog>,
 }
 
-#[derive(Debug, Default, Eq, PartialEq)]
+#[derive(Debug, Default, PartialEq)]
 pub enum Mode {
     #[default]
     Navigate,
     EditCell,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConfirmDialog {
+    pub message: Message,
+    pub body: String,
+    pub active_button: ConfirmDialogButton,
+}
+
+#[derive(PartialEq, Debug, Clone)]
+pub enum ConfirmDialogButton {
+    Yes,
+    No,
 }
 
 #[derive(Debug)]

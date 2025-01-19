@@ -1,4 +1,4 @@
-use super::app_db::{AppDB, Cell, Mode};
+use super::app_db::{AppDB, Cell, ConfirmDialog, ConfirmDialogButton, Mode};
 use super::message::{CellsMessage, Message};
 use anyhow::Result;
 use crossterm::event;
@@ -61,6 +61,13 @@ impl Handler {
     pub fn handle(&self, app_db: &mut AppDB, msg: Message) -> Result<()> {
         app_db.show_help = false; // make sure help is hidden immediately on any action
         match msg {
+            Message::ConfirmQuit => {
+                app_db.popup = Some(ConfirmDialog {
+                    message: Message::Quit,
+                    body: "Are you sure you want to quit?".to_string(),
+                    active_button: ConfirmDialogButton::Yes,
+                })
+            }
             Message::Quit => {
                 app_db.quit = true;
             }
@@ -116,67 +123,109 @@ impl Handler {
                     }
                 }
             },
-            Message::KeyPressed(key) => match app_db.mode {
-                Mode::Navigate => match key.code {
-                    KeyCode::Char('?') | KeyCode::F(1) => {
-                        app_db.show_help = true;
-                    }
-                    KeyCode::Char('q') => {
-                        app_db.quit = true;
-                    }
-                    KeyCode::Char('e') => {
-                        self.handle(app_db, Message::Cells(CellsMessage::ExecuteCurrent))?;
-                    }
-                    KeyCode::Char('n') => {
-                        self.handle(app_db, Message::Cells(CellsMessage::Create))?;
-                    }
-                    KeyCode::Char('d') => {
-                        self.handle(app_db, Message::Cells(CellsMessage::DeleteCurrent))?;
-                    }
-                    KeyCode::Enter | KeyCode::Left => {
-                        app_db
-                            .cells
-                            .editor
-                            .set_cursor_style(Style::from((Color::White, Color::Black)));
-                        app_db.mode = Mode::EditCell;
-                    }
-                    KeyCode::Up => {
-                        if let Some(index) = app_db.cells.current_cell_index {
-                            if index > 0 {
-                                let new_index = index - 1;
-                                app_db.cells.current_cell_index = Some(new_index);
-                                self.switch_cell(app_db, app_db.cells.order[new_index])
+            Message::KeyPressed(key) => {
+                if let Some(popup) = &app_db.popup {
+                    match key.code {
+                        KeyCode::Enter | KeyCode::Char(' ') => {
+                            match popup.active_button {
+                                ConfirmDialogButton::Yes => {
+                                    self.handle(app_db, popup.message.clone())?;
+                                }
+                                ConfirmDialogButton::No => {}
+                            };
+                            app_db.popup = None;
+                        }
+                        KeyCode::Esc | KeyCode::Char('n') => {
+                            app_db.popup = None;
+                        }
+                        KeyCode::Char('y') => {
+                            self.handle(app_db, popup.message.clone())?;
+                            app_db.popup = None;
+                        }
+                        KeyCode::Right => {
+                            if popup.active_button == ConfirmDialogButton::Yes {
+                                let mut p = (*popup).clone();
+                                p.active_button = ConfirmDialogButton::No;
+                                app_db.popup.replace(p);
                             }
                         }
-                    }
-                    KeyCode::Down => {
-                        if let Some(index) = app_db.cells.current_cell_index {
-                            if index + 1 < app_db.cells.order.len() {
-                                let new_index = index + 1;
-                                app_db.cells.current_cell_index = Some(new_index);
-                                self.switch_cell(app_db, app_db.cells.order[new_index])
+                        KeyCode::Left => {
+                            if popup.active_button == ConfirmDialogButton::No {
+                                let mut p = (*popup).clone();
+                                p.active_button = ConfirmDialogButton::Yes;
+                                app_db.popup.replace(p);
                             }
                         }
+                        _ => {}
                     }
-                    _ => {}
-                },
-                Mode::EditCell => {
-                    if key.code == KeyCode::Char('e')
-                        && key.modifiers.contains(KeyModifiers::CONTROL)
-                    {
-                        self.handle(app_db, Message::Cells(CellsMessage::ExecuteCurrent))?;
-                    } else if key.code == KeyCode::Esc {
-                        app_db
-                            .cells
-                            .editor
-                            .set_cursor_style(Style::from((Color::White, Color::Gray)));
-                        app_db.mode = Mode::Navigate;
-                        self.handle(app_db, Message::Cells(CellsMessage::SaveCurrent))?;
-                    } else {
-                        app_db.cells.editor.input(key);
+                } else {
+                    match app_db.mode {
+                        Mode::Navigate => match key.code {
+                            KeyCode::Char('?') | KeyCode::F(1) => {
+                                app_db.show_help = true;
+                            }
+                            KeyCode::Char('q') => {
+                                self.handle(app_db, Message::ConfirmQuit)?;
+                            }
+                            KeyCode::Char('e') => {
+                                self.handle(app_db, Message::Cells(CellsMessage::ExecuteCurrent))?;
+                            }
+                            KeyCode::Char('n') => {
+                                self.handle(app_db, Message::Cells(CellsMessage::Create))?;
+                            }
+                            KeyCode::Char('d') => {
+                                app_db.popup = Some(ConfirmDialog {
+                                    message: Message::Cells(CellsMessage::DeleteCurrent),
+                                    body: "Delete current cell?".to_string(),
+                                    active_button: ConfirmDialogButton::Yes,
+                                });
+                            }
+                            KeyCode::Enter | KeyCode::Left => {
+                                app_db
+                                    .cells
+                                    .editor
+                                    .set_cursor_style(Style::from((Color::White, Color::Black)));
+                                app_db.mode = Mode::EditCell;
+                            }
+                            KeyCode::Up => {
+                                if let Some(index) = app_db.cells.current_cell_index {
+                                    if index > 0 {
+                                        let new_index = index - 1;
+                                        app_db.cells.current_cell_index = Some(new_index);
+                                        self.switch_cell(app_db, app_db.cells.order[new_index])
+                                    }
+                                }
+                            }
+                            KeyCode::Down => {
+                                if let Some(index) = app_db.cells.current_cell_index {
+                                    if index + 1 < app_db.cells.order.len() {
+                                        let new_index = index + 1;
+                                        app_db.cells.current_cell_index = Some(new_index);
+                                        self.switch_cell(app_db, app_db.cells.order[new_index])
+                                    }
+                                }
+                            }
+                            _ => {}
+                        },
+                        Mode::EditCell => {
+                            if key.code == KeyCode::Char('e')
+                                && key.modifiers.contains(KeyModifiers::CONTROL)
+                            {
+                                self.handle(app_db, Message::Cells(CellsMessage::ExecuteCurrent))?;
+                            } else if key.code == KeyCode::Esc {
+                                app_db
+                                    .cells
+                                    .editor
+                                    .set_cursor_style(Style::from((Color::White, Color::Gray)));
+                                app_db.mode = Mode::Navigate;
+                                self.handle(app_db, Message::Cells(CellsMessage::SaveCurrent))?;
+                            } else {
+                                app_db.cells.editor.input(key);
+                            }
+                        }
                     }
                 }
-            },
+            }
         }
         Ok(())
     }

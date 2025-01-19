@@ -1,12 +1,12 @@
-use super::app_db::{AppDB, CellState, Mode};
+use super::app_db::{AppDB, CellState, ConfirmDialogButton, Mode};
 use super::handler;
 use crate::core::{DataFusionSession, LocalDataFusionSession};
 use crate::tui::handler::Handler;
 use crate::tui::message::{CellsMessage, Message};
 use anyhow::Result;
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::layout::{Alignment, Constraint, Direction, Flex, Layout, Rect};
 use ratatui::style::{Color, Style};
-use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use ratatui::widgets::{Block, BorderType, Borders, Clear, Padding, Paragraph, Wrap};
 use ratatui::{
     backend::{Backend, CrosstermBackend},
     crossterm::{
@@ -72,6 +72,75 @@ fn render_status_line(app_db: &AppDB, frame: &mut Frame, rect: Rect) {
     )
 }
 
+fn center(area: Rect, horizontal: Constraint, vertical: Constraint) -> Rect {
+    let [area] = Layout::horizontal([horizontal])
+        .flex(Flex::Center)
+        .areas(area);
+    let [area] = Layout::vertical([vertical]).flex(Flex::Center).areas(area);
+    area
+}
+
+fn render_popup(app_db: &AppDB, frame: &mut Frame) {
+    if let Some(popup) = &app_db.popup {
+        let pad = 1u16;
+
+        let block = Block::new()
+            .border_type(BorderType::Rounded)
+            .borders(Borders::all())
+            .border_style(Style::default().fg(Color::DarkGray))
+            .padding(Padding::new(pad, pad, pad, pad));
+
+        let text = popup.body.clone();
+        let area = center(
+            frame.area(),
+            Constraint::Length(text.len() as u16 + 10),
+            Constraint::Length(7),
+        );
+
+        let layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(vec![Constraint::Length(6), Constraint::Length(1)])
+            .split(block.inner(area));
+
+        let buttons_layout = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(vec![
+                Constraint::Fill(1),
+                Constraint::Length(10),
+                Constraint::Fill(1),
+                Constraint::Length(10),
+                Constraint::Fill(1),
+            ])
+            .split(layout[1]);
+
+        let text_widget = Paragraph::new(popup.body.clone()).alignment(Alignment::Center);
+        frame.render_widget(Clear, area);
+        frame.render_widget(block, area);
+        frame.render_widget(text_widget, layout[0]);
+
+        let active = Style::from((Color::White, Color::DarkGray));
+        let not_active = Style::from((Color::Black, Color::Gray));
+
+        let btn_yes = Paragraph::new("Yes").alignment(Alignment::Center).style(
+            if popup.active_button == ConfirmDialogButton::Yes {
+                active
+            } else {
+                not_active
+            },
+        );
+        let btn_no = Paragraph::new("No").alignment(Alignment::Center).style(
+            if popup.active_button == ConfirmDialogButton::No {
+                active
+            } else {
+                not_active
+            },
+        );
+
+        frame.render_widget(btn_yes, buttons_layout[1]);
+        frame.render_widget(btn_no, buttons_layout[3]);
+    }
+}
+
 fn view(app_db: &AppDB, frame: &mut Frame) {
     let mut show_help = app_db.show_help;
 
@@ -120,11 +189,17 @@ fn view(app_db: &AppDB, frame: &mut Frame) {
     }
 
     if show_help {
-        let block = Block::default().borders(Borders::ALL);
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded);
         frame.render_widget(
             Paragraph::new("Press 'n' to create a cell").block(block),
             frame.area(),
         );
+    }
+
+    if app_db.popup.is_some() {
+        render_popup(app_db, frame);
     }
 }
 
