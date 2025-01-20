@@ -1,4 +1,4 @@
-use super::app_db::{AppDB, Cell, ConfirmDialog, ConfirmDialogButton, Mode};
+use super::app_db::{AppDB, Cell, CellState, ConfirmDialog, ConfirmDialogButton, Mode};
 use super::message::{CellsMessage, Message};
 use anyhow::Result;
 use crossterm::event;
@@ -75,6 +75,7 @@ impl Handler {
                 CellsMessage::ExecuteCurrent => {
                     if let Some(cell_id) = app_db.cells.get_current_cell_id() {
                         if let Some(expr) = app_db.cells.get_code(&cell_id) {
+                            app_db.cells.set_status(cell_id, CellState::Running);
                             self.df_channel.send((cell_id, expr))?;
                         }
                     }
