@@ -143,7 +143,7 @@ fn render_help(frame: &mut Frame) {
 }
 
 fn render_table(app_db: &AppDB, frame: &mut Frame, area: Rect) {
-    if let Some(ref result) = app_db
+    if let Some(result) = app_db
         .cells
         .get_current_cell_id()
         .and_then(|id| app_db.cells.get_cell(&id))
@@ -159,6 +159,8 @@ fn render_table(app_db: &AppDB, frame: &mut Frame, area: Rect) {
             return;
         }
 
+        let max_rows = area.height as usize - 1;
+
         let batch = result.first().unwrap();
 
         let header = batch
@@ -173,23 +175,30 @@ fn render_table(app_db: &AppDB, frame: &mut Frame, area: Rect) {
 
         let mut rows: Vec<widgets::Row> = vec![];
 
-        for batch in result.iter() {
-            let formatters = batch
-                .columns()
-                .iter()
-                .map(|c| ArrayFormatter::try_new(c.as_ref(), &FormatOptions::default()))
-                .collect::<anyhow::Result<Vec<_>, ArrowError>>()
-                .unwrap();
+        let formatters = batch
+            .columns()
+            .iter()
+            .map(|c| ArrayFormatter::try_new(c.as_ref(), &FormatOptions::default()))
+            .collect::<anyhow::Result<Vec<_>, ArrowError>>()
+            .unwrap();
 
+        for batch in result.iter() {
+            if rows.len() == max_rows {
+                break;
+            }
             for i in 0..batch.num_rows() {
+                if rows.len() == max_rows {
+                    break;
+                }
+
                 let mut cells = Vec::new();
                 for formatter in &formatters {
                     cells.push(formatter.value(i).to_string());
                 }
                 let bg = if i % 2 == 0 {
-                    Color::White
+                    Color::Reset
                 } else {
-                    Color::Gray
+                    Color::White
                 };
                 let table_row = widgets::Row::new(cells).style(Style::new().bg(bg));
                 rows.push(table_row);
