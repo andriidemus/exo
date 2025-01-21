@@ -120,7 +120,7 @@ fn render_help(frame: &mut Frame) {
             ↑, k     - select previous cell
             ↓, j     - select next cell
             ←, h, ↵  - edit selected cell
-            e        - execute selected cell
+            x        - execute selected cell
             q        - quit
             ?, F1    - show this help
             "};
@@ -239,8 +239,8 @@ pub fn render(state: &State, frame: &mut Frame) {
                         
                         Official reference: https://datafusion.apache.org/user-guide/sql/index.html
 
-                        To execute cell, press <Alt/Option + Enter>
-                        You also may press <Esc> to back to the Navigation mode, and then press <e>
+                        To execute cell, press <Ctrl + x>
+                        You also may press <Esc> to back to the Navigation mode, and then press <x>
                     "};
 
                     frame.render_widget(Paragraph::new(text), cell_layout[1]);

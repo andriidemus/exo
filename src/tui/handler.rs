@@ -153,7 +153,7 @@ impl Handler {
             KeyCode::Char('q') => {
                 self.handle(state, Message::ConfirmQuit)?;
             }
-            KeyCode::Char('e') => {
+            KeyCode::Char('x') => {
                 self.handle(state, Message::Cells(CellsMessage::ExecuteCurrent))?;
             }
             KeyCode::Char('n') => {
@@ -195,7 +195,7 @@ impl Handler {
     }
 
     fn handle_edit_messages(&self, state: &mut State, key: KeyEvent) -> Result<()> {
-        if key.code == KeyCode::Enter && key.modifiers.contains(KeyModifiers::ALT) {
+        if key.code == KeyCode::Char('x') && key.modifiers.contains(KeyModifiers::CONTROL) {
             self.handle(state, Message::Cells(CellsMessage::SaveCurrent))?;
             self.handle(state, Message::Cells(CellsMessage::ExecuteCurrent))?;
         } else if key.code == KeyCode::Esc {
