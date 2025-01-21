@@ -52,13 +52,21 @@ fn user_event() -> Result<Option<Message>> {
     Ok(None)
 }
 
-pub async fn start() -> Result<()> {
+pub async fn start(preload: Option<String>) -> Result<()> {
     install_panic_hook();
     let mut terminal = init_terminal()?;
     let mut state = State::default();
 
     let (sender, receiver) = mpsc::channel::<Vec<Message>>();
     let sender_from_ue = sender.clone();
+
+    if let Some(p) = preload {
+        for cell_body in p.split("-- next-cell").collect::<Vec<_>>() {
+            sender.send(vec![Message::Cells(CellsMessage::Create(Some(
+                cell_body.trim().to_string(),
+            )))])?;
+        }
+    };
 
     let (df_sender, df_receiver) = mpsc::channel::<(Uuid, String)>();
     let handler = Handler::new(df_sender);

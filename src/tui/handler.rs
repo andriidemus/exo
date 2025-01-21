@@ -17,8 +17,9 @@ impl Handler {
         Self { df_channel }
     }
 
-    fn create_cell(&self, state: &mut State) -> Result<()> {
-        let cell = Cell::new();
+    fn create_cell(&self, state: &mut State, code: Option<String>) -> Result<()> {
+        let mut cell = Cell::new();
+        cell.code = code;
         let cell_id = cell.id;
         state.cells.all.insert(cell.id, cell);
 
@@ -72,8 +73,8 @@ impl Handler {
                     cell.code = Some(lines)
                 }
             }
-            CellsMessage::Create => {
-                self.create_cell(state)?;
+            CellsMessage::Create(code) => {
+                self.create_cell(state, code)?;
                 state
                     .cells
                     .editor
@@ -157,7 +158,7 @@ impl Handler {
                 self.handle(state, Message::Cells(CellsMessage::ExecuteCurrent))?;
             }
             KeyCode::Char('n') => {
-                self.handle(state, Message::Cells(CellsMessage::Create))?;
+                self.handle(state, Message::Cells(CellsMessage::Create(None)))?;
             }
             KeyCode::Char('d') => {
                 state.popup = Some(ConfirmDialog {

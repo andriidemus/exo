@@ -16,6 +16,6 @@ pub enum CellsMessage {
     SaveCurrent,
     SetResult(Uuid, Vec<RecordBatch>),
     SetError(Uuid, String),
-    Create,
+    Create(Option<String>),
     DeleteCurrent,
 }
