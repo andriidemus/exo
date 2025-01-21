@@ -5,7 +5,7 @@ use tui_textarea::TextArea;
 use uuid::Uuid;
 
 #[derive(Debug, Default)]
-pub struct AppDB<'a> {
+pub struct State<'a> {
     pub cells: Cells<'a>,
     pub mode: Mode,
     pub quit: bool,
@@ -36,9 +36,8 @@ pub enum ConfirmDialogButton {
 #[derive(Debug)]
 pub struct Cells<'a> {
     pub editor: TextArea<'a>,
-    pub cells: HashMap<Uuid, Cell>,
+    pub all: HashMap<Uuid, Cell>,
     pub order: Vec<Uuid>,
-    pub current_cell_index: Option<usize>,
     pub current_cell_id: Option<Uuid>,
 }
 
@@ -52,55 +51,23 @@ impl Cells<'_> {
     pub fn new() -> Self {
         Self {
             editor: Default::default(),
-            cells: HashMap::new(),
+            all: HashMap::new(),
             order: Vec::new(),
             current_cell_id: Default::default(),
-            current_cell_index: Default::default(),
         }
     }
 
-    pub fn add(&mut self, cell: Cell) {
-        self.cells.insert(cell.id, cell);
+    pub fn current_mut(&mut self) -> Option<&mut Cell> {
+        self.current_cell_id.and_then(|id| self.all.get_mut(&id))
     }
 
-    pub fn remove(&mut self, cell_id: &Uuid) {
-        self.cells.remove(cell_id);
+    pub fn current(&self) -> Option<&Cell> {
+        self.current_cell_id.and_then(|id| self.all.get(&id))
     }
 
-    pub fn set_code(&mut self, cell_id: Uuid, code: String) {
-        self.cells
-            .entry(cell_id)
-            .and_modify(|e| e.code = Some(code));
-    }
-
-    pub fn set_status(&mut self, cell_id: Uuid, state: CellState) {
-        self.cells.entry(cell_id).and_modify(|e| e.state = state);
-    }
-
-    pub fn set_result(&mut self, cell_id: Uuid, result: Vec<RecordBatch>) {
-        self.cells.entry(cell_id).and_modify(|e| {
-            e.result = Some(result);
-            e.state = CellState::Finished
-        });
-    }
-
-    pub fn set_error(&mut self, cell_id: Uuid, error: String) {
-        self.cells.entry(cell_id).and_modify(|e| {
-            e.error = Some(error);
-            e.state = CellState::Failed
-        });
-    }
-
-    pub fn get_current_cell_id(&self) -> Option<Uuid> {
+    pub fn current_cell_index(&self) -> Option<usize> {
         self.current_cell_id
-    }
-
-    pub fn get_code(&self, cell_id: &Uuid) -> Option<String> {
-        self.cells.get(cell_id).and_then(|c| c.code.clone())
-    }
-
-    pub fn get_cell(&self, cell_id: &Uuid) -> Option<&Cell> {
-        self.cells.get(cell_id)
+            .and_then(|id| self.order.iter().position(|item| *item == id))
     }
 }
 
@@ -110,11 +77,11 @@ pub struct Cell {
     pub code: Option<String>,
     pub result: Option<Vec<RecordBatch>>,
     pub error: Option<String>,
-    pub state: CellState,
+    pub status: CellStatus,
 }
 
 #[derive(Debug, Clone)]
-pub enum CellState {
+pub enum CellStatus {
     Clean,
     Running,
     Finished,
@@ -134,7 +101,7 @@ impl Cell {
             code: None,
             result: None,
             error: None,
-            state: CellState::Clean,
+            status: CellStatus::Clean,
         }
     }
 }

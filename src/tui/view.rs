@@ -1,4 +1,4 @@
-use crate::tui::app_db::{AppDB, CellState, ConfirmDialogButton, Mode};
+use crate::tui::state::{CellStatus, ConfirmDialogButton, Mode, State};
 use datafusion::arrow::error::ArrowError;
 use datafusion::arrow::util::display::{ArrayFormatter, FormatOptions};
 use indoc::indoc;
@@ -7,33 +7,33 @@ use ratatui::prelude::{Color, Modifier, Style};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Padding, Paragraph, Wrap};
 use ratatui::{widgets, Frame};
 
-fn render_status_line(app_db: &AppDB, frame: &mut Frame, rect: Rect) {
+fn render_status_line(state: &State, frame: &mut Frame, rect: Rect) {
     let style = Style::new().bg(Color::Gray);
-    let mode_str = match app_db.mode {
+    let mode_str = match state.mode {
         Mode::Navigate => "🚀 NAVI",
         Mode::EditCell => "✏️ EDIT",
     };
-    let cell_no = app_db
+    let cell_no = state
         .cells
-        .current_cell_index
-        .map(|i| format!("{}/{}", i + 1, app_db.cells.cells.len()));
+        .current_cell_index()
+        .map(|i| format!("{}/{}", i + 1, state.cells.all.len()));
 
-    let cell_state =
-        app_db
+    let cell_status =
+        state
             .cells
             .current_cell_id
-            .map(|id| match app_db.cells.get_cell(&id).unwrap().state {
-                CellState::Clean => "Not Executed",
-                CellState::Running => "Running",
-                CellState::Finished => "Finished",
-                CellState::Failed => "Failed",
+            .map(|id| match state.cells.all.get(&id).unwrap().status {
+                CellStatus::Clean => "Not Executed",
+                CellStatus::Running => "Running",
+                CellStatus::Finished => "Finished",
+                CellStatus::Failed => "Failed",
             });
 
     let mut parts = vec![mode_str.to_string()];
     if let Some(val) = cell_no {
         parts.push(val);
     }
-    if let Some(val) = cell_state {
+    if let Some(val) = cell_status {
         parts.push(val.to_string());
     }
 
@@ -56,8 +56,8 @@ fn centered_area(area: Rect, width: u16, height: u16) -> Rect {
     area
 }
 
-fn render_popup(app_db: &AppDB, frame: &mut Frame) {
-    if let Some(popup) = &app_db.popup {
+fn render_popup(state: &State, frame: &mut Frame) {
+    if let Some(popup) = &state.popup {
         let pad = 1u16;
 
         let block = Block::new()
@@ -142,11 +142,11 @@ fn render_help(frame: &mut Frame) {
     frame.render_widget(Paragraph::new(help).block(block), area);
 }
 
-fn render_table(app_db: &AppDB, frame: &mut Frame, area: Rect) {
-    if let Some(result) = app_db
+fn render_table(state: &State, frame: &mut Frame, area: Rect) {
+    if let Some(result) = state
         .cells
-        .get_current_cell_id()
-        .and_then(|id| app_db.cells.get_cell(&id))
+        .current()
+        .and_then(|c| state.cells.all.get(&c.id))
         .and_then(|cell| cell.result.as_ref())
     {
         frame.render_widget(Clear, area);
@@ -213,27 +213,27 @@ fn render_table(app_db: &AppDB, frame: &mut Frame, area: Rect) {
     }
 }
 
-pub fn render(app_db: &AppDB, frame: &mut Frame) {
-    let mut show_help = app_db.show_help;
+pub fn render(state: &State, frame: &mut Frame) {
+    let mut show_help = state.show_help;
 
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints(vec![Constraint::Min(1), Constraint::Length(1)])
         .split(frame.area());
 
-    render_status_line(app_db, frame, layout[1]);
+    render_status_line(state, frame, layout[1]);
 
-    if let Some(cell_id) = app_db.cells.get_current_cell_id() {
+    if let Some(cell) = state.cells.current() {
         let cell_layout = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(vec![Constraint::Percentage(50), Constraint::Percentage(50)])
             .split(layout[0]);
 
-        if let Some(cell) = app_db.cells.get_cell(&cell_id) {
-            frame.render_widget(&app_db.cells.editor, cell_layout[0]);
+        if let Some(cell) = state.cells.all.get(&cell.id) {
+            frame.render_widget(&state.cells.editor, cell_layout[0]);
 
-            match cell.state {
-                CellState::Clean => {
+            match cell.status {
+                CellStatus::Clean => {
                     let text = indoc! {"
                         You can write and execute SQL in the DataFusion dialect.
                         
@@ -245,14 +245,14 @@ pub fn render(app_db: &AppDB, frame: &mut Frame) {
 
                     frame.render_widget(Paragraph::new(text), cell_layout[1]);
                 }
-                CellState::Running => {
+                CellStatus::Running => {
                     let area = centered_area(cell_layout[1], 30, 1);
                     frame.render_widget(Paragraph::new("Running 🏃‍➡️🏃‍♂️‍➡️🏃‍♀️‍➡️ "), area);
                 }
-                CellState::Finished => {
-                    render_table(app_db, frame, cell_layout[1]);
+                CellStatus::Finished => {
+                    render_table(state, frame, cell_layout[1]);
                 }
-                CellState::Failed => {
+                CellStatus::Failed => {
                     frame.render_widget(
                         Paragraph::new(cell.error.clone().unwrap_or(String::new()))
                             .style(Style::new().fg(Color::Red))
@@ -270,7 +270,7 @@ pub fn render(app_db: &AppDB, frame: &mut Frame) {
         render_help(frame);
     }
 
-    if app_db.popup.is_some() {
-        render_popup(app_db, frame);
+    if state.popup.is_some() {
+        render_popup(state, frame);
     }
 }

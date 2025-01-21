@@ -13,7 +13,6 @@ pub enum Message {
 #[derive(PartialEq, Debug, Clone)]
 pub enum CellsMessage {
     ExecuteCurrent,
-    ClearCurrent,
     SaveCurrent,
     SetResult(Uuid, Vec<RecordBatch>),
     SetError(Uuid, String),

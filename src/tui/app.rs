@@ -1,9 +1,11 @@
-use super::app_db::AppDB;
-use super::{handler, view};
+use super::state::State;
+use super::view;
 use crate::core::{DataFusionSession, LocalDataFusionSession};
 use crate::tui::handler::Handler;
 use crate::tui::message::{CellsMessage, Message};
 use anyhow::Result;
+use crossterm::event;
+use crossterm::event::Event;
 use ratatui::{
     backend::{Backend, CrosstermBackend},
     crossterm::{
@@ -13,6 +15,7 @@ use ratatui::{
     Terminal,
 };
 use std::sync::{mpsc, Arc, Mutex};
+use std::time::Duration;
 use std::{io::stdout, panic};
 use uuid::Uuid;
 
@@ -38,10 +41,21 @@ fn install_panic_hook() {
     }));
 }
 
+fn user_event() -> Result<Option<Message>> {
+    if event::poll(Duration::from_millis(10))? {
+        if let Event::Key(key) = event::read()? {
+            if key.kind == event::KeyEventKind::Press {
+                return Ok(Some(Message::KeyPressed(key)));
+            }
+        }
+    }
+    Ok(None)
+}
+
 pub async fn start() -> Result<()> {
     install_panic_hook();
     let mut terminal = init_terminal()?;
-    let mut app_db = AppDB::default();
+    let mut state = State::default();
 
     let (sender, receiver) = mpsc::channel::<Vec<Message>>();
     let sender_from_ue = sender.clone();
@@ -49,6 +63,7 @@ pub async fn start() -> Result<()> {
     let (df_sender, df_receiver) = mpsc::channel::<(Uuid, String)>();
     let handler = Handler::new(df_sender);
 
+    // Processing all DataFusion operations async
     let df_loop = tokio::spawn(async move {
         let df = LocalDataFusionSession::new();
 
@@ -65,16 +80,19 @@ pub async fn start() -> Result<()> {
         }
     });
 
+    // Main even(message) processing loop
     let event_loop = tokio::spawn(async move {
-        terminal.draw(|f| view::render(&app_db, f)).unwrap();
+        // We need to draw UI on start
+        terminal.draw(|f| view::render(&state, f)).unwrap();
         while let Ok(msgs) = receiver.recv() {
             for msg in msgs {
-                handler.handle(&mut app_db, msg).unwrap();
+                handler.handle(&mut state, msg).unwrap();
             }
-            if app_db.quit {
+            if state.quit {
                 return;
             }
-            terminal.draw(|f| view::render(&app_db, f)).unwrap();
+            // In order to reduce CPU usage, we do not re-draw UI until a message has been received
+            terminal.draw(|f| view::render(&state, f)).unwrap();
         }
     });
 
@@ -82,7 +100,7 @@ pub async fn start() -> Result<()> {
     let exit_flag_clone = exit_flag.clone();
     let ui_event_loop = tokio::spawn(async move {
         loop {
-            if let Some(msg) = handler::user_event().unwrap() {
+            if let Some(msg) = user_event().unwrap() {
                 if sender_from_ue.send(vec![msg]).is_err() {
                     break;
                 }
